@@ -2,31 +2,16 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "vmName": {
-      "type": "string",
-      "defaultValue": "win2022-vm",
-      "metadata": {
-        "description": "Имя виртуальной машины"
-      }
-    },
-    "adminUsername": {
-      "type": "string",
-      "metadata": {
-        "description": "Имя администратора"
-      }
-    },
-    "adminPassword": {
-      "type": "secureString",
-      "metadata": {
-        "description": "Пароль администратора"
-      }
-    }
+    "vmName": { "type": "string", "defaultValue": "WinServer2025VM" },
+    "adminUsername": { "type": "string" },
+    "adminPassword": { "type": "secureString" }
   },
   "variables": {
     "location": "westeurope",
     "networkInterfaceName": "[concat(parameters('vmName'),'-nic')]",
     "networkSecurityGroupName": "[concat(parameters('vmName'),'-nsg')]",
     "virtualNetworkName": "[concat(parameters('vmName'),'-vnet')]",
+    "publicIPAddressName": "[concat(parameters('vmName'),'-pip')]",
     "subnetName": "default",
     "addressPrefix": "10.0.0.0/16",
     "subnetPrefix": "10.0.0.0/24",
@@ -39,22 +24,27 @@
       "name": "[variables('networkSecurityGroupName')]",
       "location": "[variables('location')]",
       "properties": {
-        "securityRules": [
-          {
-            "name": "allow-rdp",
-            "properties": {
-              "priority": 1000,
-              "protocol": "Tcp",
-              "access": "Allow",
-              "direction": "Inbound",
-              "sourceAddressPrefix": "VirtualNetwork",
-              "sourcePortRange": "*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "3389"
-            }
+        "securityRules": [{
+          "name": "allow-rdp",
+          "properties": {
+            "priority": 1000,
+            "protocol": "Tcp",
+            "access": "Allow",
+            "direction": "Inbound",
+            "sourceAddressPrefix": "*",
+            "sourcePortRange": "*",
+            "destinationAddressPrefix": "*",
+            "destinationPortRange": "3389"
           }
-        ]
+        }]
       }
+    },
+    {
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2023-04-01",
+      "name": "[variables('publicIPAddressName')]",
+      "location": "[variables('location')]",
+      "properties": { "publicIPAllocationMethod": "Dynamic" }
     },
     {
       "type": "Microsoft.Network/virtualNetworks",
@@ -62,22 +52,16 @@
       "name": "[variables('virtualNetworkName')]",
       "location": "[variables('location')]",
       "properties": {
-        "addressSpace": {
-          "addressPrefixes": [
-            "[variables('addressPrefix')]"
-          ]
-        },
-        "subnets": [
-          {
-            "name": "[variables('subnetName')]",
-            "properties": {
-              "addressPrefix": "[variables('subnetPrefix')]",
-              "networkSecurityGroup": {
-                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
-              }
+        "addressSpace": { "addressPrefixes": ["[variables('addressPrefix')]"] },
+        "subnets": [{
+          "name": "[variables('subnetName')]",
+          "properties": {
+            "addressPrefix": "[variables('subnetPrefix')]",
+            "networkSecurityGroup": {
+              "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroupName'))]"
             }
           }
-        ]
+        }]
       }
     },
     {
@@ -85,18 +69,19 @@
       "apiVersion": "2023-04-01",
       "name": "[variables('networkInterfaceName')]",
       "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
+      ],
       "properties": {
-        "ipConfigurations": [
-          {
-            "name": "ipconfig1",
-            "properties": {
-              "subnet": {
-                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('virtualNetworkName'), variables('subnetName'))]"
-              },
-              "privateIPAllocationMethod": "Dynamic"
-            }
+        "ipConfigurations": [{
+          "name": "ipconfig1",
+          "properties": {
+            "subnet": { "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('virtualNetworkName'), variables('subnetName'))]" },
+            "privateIPAllocationMethod": "Dynamic",
+            "publicIPAddress": { "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]" }
           }
-        ]
+        }]
       }
     },
     {
@@ -104,36 +89,26 @@
       "apiVersion": "2023-09-01",
       "name": "[parameters('vmName')]",
       "location": "[variables('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
+      ],
       "properties": {
-        "hardwareProfile": {
-          "vmSize": "Standard_B2ms"
-        },
+        "hardwareProfile": { "vmSize": "Standard_B2ms" },
         "storageProfile": {
           "imageReference": {
             "publisher": "MicrosoftWindowsServer",
             "offer": "WindowsServer",
-            "sku": "2022-Datacenter",
+            "sku": "2025-datacenter-azure-edition",
             "version": "latest"
           },
-          "osDisk": {
-            "createOption": "FromImage",
-            "managedDisk": {
-              "storageAccountType": "[variables('osDiskType')]"
-            }
-          }
+          "osDisk": { "createOption": "FromImage", "managedDisk": { "storageAccountType": "[variables('osDiskType')]" } }
         },
         "osProfile": {
           "computerName": "[parameters('vmName')]",
           "adminUsername": "[parameters('adminUsername')]",
           "adminPassword": "[parameters('adminPassword')]"
         },
-        "networkProfile": {
-          "networkInterfaces": [
-            {
-              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]"
-            }
-          ]
-        }
+        "networkProfile": { "networkInterfaces": [{ "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('networkInterfaceName'))]" }] }
       }
     }
   ]
